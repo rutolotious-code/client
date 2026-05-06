@@ -627,11 +627,14 @@ export default function VehicleInformation() {
         vehicleRegistrationUrl = await uploadImageToCloudinary(base64, 'driver_images');
       }
 
-      // Prepare services array
-      let services = vehicleData.services || [];
-      if (vehicleType === 'minibus') {
+      // Prepare services - trucks should NOT send services (backend auto-assigns)
+      let services: string[] | undefined = undefined;
+      if (vehicleType === 'car') {
+        services = vehicleData.services || [];
+      } else if (vehicleType === 'minibus') {
         services = ['ride']; // Auto-set for minibus
       }
+      // For trucks and motorbikes, services remains undefined
 
       // Build payload for backend API
       const payload: any = {
@@ -642,7 +645,6 @@ export default function VehicleInformation() {
         productionYear: vehicleData.productionYear,
         plateNumber: vehicleData.numberPlate.trim(),
         color: vehicleData.color,
-        services,
         imageUrls: {
           carImage: vehiclePictureUrl,
           vehicleLicense: vehicleLicenseUrl,
@@ -650,18 +652,20 @@ export default function VehicleInformation() {
         },
       };
 
-      // Add truck-specific fields if applicable
-      // NOTE: tonnage is NOT sent - it's determined by the backend
+      // Only attach services if defined (trucks don't send services - backend auto-assigns)
+      if (services !== undefined) {
+        payload.services = services;
+      }
+
+      // Add truck-specific fields (required for trucks)
       if (vehicleType === 'truck') {
-        if (vehicleData.cargoType) {
-          payload.cargoType = vehicleData.cargoType;
-        }
-        if (vehicleData.refrigerationType) {
+        payload.cargoType = vehicleData.cargoType;
+        if (vehicleData.cargoType === 'enclosed') {
           payload.refrigerationType = vehicleData.refrigerationType;
         }
       }
 
-      console.log('[v0] Sending vehicle data to backend:', payload);
+      console.log('[Submit] Payload:', payload);
 
       // Send data to backend API - backend will classify vehicle, generate vehicleCategory,
       // generate pricingCategory, and save final vehicle object to Firestore
@@ -673,18 +677,21 @@ export default function VehicleInformation() {
         body: JSON.stringify(payload),
       });
 
+      console.log('[Submit] Response status:', response.status);
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        console.log('[Submit] Error response:', errorData);
         throw new Error(errorData.message || 'Failed to save vehicle information');
       }
 
       const result = await response.json();
-      console.log('[v0] Backend response:', result);
+      console.log('[Submit] Success response:', result);
 
       // Navigate to the location selection page
       router.push('/chooseLocation');
     } catch (error: any) {
-      console.error('[v0] Error saving vehicle data:', error);
+      console.log('[Submit] Error:', error.message || error);
       Alert.alert('Error', error.message || 'Failed to save vehicle information. Please try again.');
     } finally {
       setIsUploading(false);
